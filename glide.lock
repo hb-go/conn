@@ -1,0 +1,24 @@
+hash: 8baddae35a501f58e223ec1d8ce717a071a1348a392acf3fc7a62c18901d1dfb
+updated: 2018-08-15T17:33:05.026619+08:00
+imports:
+- name: github.com/fatih/color
+  version: 5b77d2a35fb0ede96d138fc9a99f5c9b6aef11b4
+- name: github.com/mailru/easygo
+  version: 6ced98f886dd65a113f1843d868623e6fbceca31
+  subpackages:
+  - netpoll
+- name: github.com/mattn/go-colorable
+  version: efa589957cd060542a26d2dd7832fd6a6c6c3ade
+- name: github.com/mattn/go-isatty
+  version: 6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c
+- name: github.com/smallnest/rpcx
+  version: d9aeaaedc09994ad9428be1ba181ff7e3e826195
+  subpackages:
+  - log
+- name: github.com/surgemq/message
+  version: 2b7ca1ac6121420133f8df6b94a976d5ca35339a
+- name: golang.org/x/sys
+  version: c11f84a56e43e20a78cee75a7c034031ecf57d1f
+  subpackages:
+  - unix
+testImports: []

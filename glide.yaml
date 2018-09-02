@@ -1,0 +1,13 @@
+package: github.com/hb-go/conn
+import:
+- package: golang.org/x/sys
+- package: github.com/fatih/color
+  version: ^1.7.0
+- package: github.com/mailru/easygo
+  subpackages:
+  - netpoll
+- package: github.com/smallnest/rpcx
+  version: ^3.1.0-release
+  subpackages:
+  - log
+- package: github.com/surgemq/message
