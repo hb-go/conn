@@ -7,17 +7,15 @@ import (
 
 	"sync"
 
-	"math/rand"
-
 	"github.com/hb-go/conn"
 	"github.com/hb-go/conn/benchmark/handler"
 	"github.com/hb-go/conn/pkg/log"
 )
 
 func main() {
-
+	log.SetLevel(log.INFO)
 	wg := sync.WaitGroup{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		wg.Add(1)
 
 		client, _ := conn.NewClient("127.0.0.1:8080")
@@ -31,7 +29,7 @@ func main() {
 			msg := []byte("hello")
 			payload := make([]byte, 32)
 
-			d := time.Second * 60
+			d := time.Second * 10
 			timeout := time.After(d)
 
 			begin := time.Time{}
@@ -39,19 +37,20 @@ func main() {
 			for {
 				select {
 				case <-timeout:
-					wg.Done()
 					break loop
 				default:
 					if begin.IsZero() {
 						begin = time.Now()
 					}
+
+					// QoS=1
 					copy(payload, append(msg, []byte(strconv.Itoa(i))...))
 					_, err := client.Send(payload)
 					i++
 					if err != nil {
 						log.Errorf("send message failed", err)
 					} else {
-						log.Infof("send message success")
+						log.Debug("send message success")
 					}
 
 					err = handler.ClientReader(client.Conn)
@@ -59,14 +58,14 @@ func main() {
 						log.Errorf("receive message error: %v", err)
 					}
 
-					time.Sleep(time.Second * time.Duration(rand.Int63n(10)))
+					//time.Sleep(time.Second * time.Duration(rand.Int63n(10)))
 				}
 			}
 
 			duration := time.Since(begin).Seconds()
-
 			log.Infof("tps: %f/s, num: %d, duration: %f", float64(i)/duration, i, duration)
 
+			wg.Done()
 		}()
 	}
 

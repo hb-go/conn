@@ -15,12 +15,12 @@ func OnConn(c *conn.Conn) error {
 	return nil
 }
 
-func Reader(c *conn.Conn) (err error) {
-	log.Infof("conn read begin")
+func Reader(c net.Conn) (err error) {
+	log.Debugf("conn read begin")
 	begin := time.Now()
-	//conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
-	bts, err := getMessageBuffer(c.Conn)
-	//conn.SetReadDeadline(time.Time{})
+	c.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
+	bts, err := getMessageBuffer(c)
+	c.SetReadDeadline(time.Time{})
 	if err != nil {
 		// TODO temporary错误重试
 		log.Errorf("read error:%v", err)
@@ -44,7 +44,7 @@ func Reader(c *conn.Conn) (err error) {
 	d := time.Since(begin)
 	log.Debugf("conn read end: %v", d.String())
 
-	err = writeMessage(c.Conn, msg)
+	err = writeMessage(c, msg)
 	if err != nil {
 		log.Errorf("write message error:%v", err)
 	}

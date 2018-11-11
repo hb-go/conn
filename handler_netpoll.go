@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/mailru/easygo/netpoll"
+	"github.com/neverhook/easygo/netpoll"
 
 	"github.com/hb-go/conn/pkg/log"
 )
@@ -15,18 +15,24 @@ import (
 func (srv *Server) handleConn(conn net.Conn) (err error) {
 
 	c := getConnection(conn)
-	desc, e := netpoll.HandleRead(conn)
+	if tc, ok := conn.(*net.TCPConn); ok {
+		c.file, err = tc.File()
+		if err != nil {
+			return
+		}
+	}
+
+	desc, e := netpoll.HandleFile(c.file, netpoll.EventRead|netpoll.EventOneShot)
 	if e != nil {
 		err = e
 		c.closeAndPut()
 		return
 	}
 
-	srv.conns.Store(desc, c)
+	c.desc = desc
 	defer func() {
 		if err != nil {
 			c.close()
-			srv.conns.Delete(desc)
 			c.put()
 
 			if e := poller.Stop(desc); e != nil {
@@ -38,6 +44,32 @@ func (srv *Server) handleConn(conn net.Conn) (err error) {
 		}
 	}()
 
+	rf := func() {
+		if c.desc == desc {
+			defer func() {
+				if !c.isClosed() {
+					if err := poller.Resume(desc); err != nil {
+						log.Errorf("poller.Resume() error: %v", err)
+					}
+				}
+			}()
+
+			if !c.isClosed() {
+				err := srv.ReadHandler(c.conn)
+				c.setReaded()
+				log.Debugf("(connId=%d) reading unlock duration: %v", c.id, time.Since(c.timestamp).String())
+				if err != nil {
+					if e, ok := err.(net.Error); ok && (e.Timeout() || e.Temporary()) {
+						log.Warnf("read process handle error: %v", err)
+					} else {
+						log.Errorf("read process handle error: %v", err)
+						c.close()
+					}
+				}
+			}
+		}
+	}
+
 	err = poller.Start(desc, func(event netpoll.Event) {
 
 		log.Debugf("net poll event: %v", event)
@@ -45,13 +77,7 @@ func (srv *Server) handleConn(conn net.Conn) (err error) {
 			return
 		}
 
-		// Map中取Connection
-		v, ok := srv.conns.Load(desc)
-		if !ok {
-			return
-		}
-		c, ok := v.(*Conn)
-		if !ok {
+		if c.desc != desc {
 			poller.Stop(desc)
 			desc.Close()
 
@@ -64,7 +90,6 @@ func (srv *Server) handleConn(conn net.Conn) (err error) {
 				if !c.isClosed() {
 					c.close()
 				}
-				srv.conns.Delete(desc)
 				c.put()
 
 				poller.Stop(desc)
@@ -78,7 +103,6 @@ func (srv *Server) handleConn(conn net.Conn) (err error) {
 			if !c.isClosed() {
 				c.close()
 			}
-			srv.conns.Delete(desc)
 			c.put()
 
 			poller.Stop(desc)
@@ -90,43 +114,30 @@ func (srv *Server) handleConn(conn net.Conn) (err error) {
 		// read process
 		usePool := true
 		if usePool {
-			log.Infof("(connId=%d) reading pre lock: %d", c.id, c.reading)
+			log.Debugf("(connId=%d) reading pre lock: %d", c.id, c.reading)
+
+			// TODO 处于Reading状态的Conn不添加新任务
 			if c.setReading() {
 				c.timestamp = time.Now()
-				log.Infof("(connId=%d) reading lock: %d", c.id, c.reading)
-				err := readPool.ScheduleTimeout(time.Microsecond*10, func() {
-					if v, ok := srv.conns.Load(desc); ok {
-						c := v.(*Conn)
-						if !c.isClosed() {
-							err := srv.ReadHandler(c)
-							c.setReaded()
-							log.Infof("(connId=%d) reading unlock duration: %v", c.id, time.Since(c.timestamp).String())
-							if err != nil {
-								if e, ok := err.(net.Error); ok && (e.Timeout() || e.Temporary()) {
-									log.Warnf("read process handle error: %v", err)
-								} else {
-									log.Errorf("read process handle error: %v", err)
-								}
+				log.Debugf("(connId=%d) reading lock: %d", c.id, c.reading)
 
-								if err == io.EOF {
-									c.close()
-								}
-							}
-						}
-					}
-				})
-				if err != nil {
+				if err := readPool.ScheduleTimeout(time.Microsecond*100, rf); err != nil {
+					// TODO 任务队列timeout处理
 					c.setReaded()
-					log.Infof("(connId=%d) reading unlock", c.id)
+					log.Debugf("(connId=%d) reading unlock", c.id)
 					log.Errorf("read pool schedule error: %v", err)
-				}
-			}
 
+					if err := poller.Resume(desc); err != nil {
+						log.Errorf("poller.Resume() error: %v", err)
+					}
+				}
+			} else {
+				log.Warnf("(connId=%d) receive read event while reading locked", c.id)
+			}
 		} else {
 			go func() {
-				if v, ok := srv.conns.Load(desc); ok {
-					c := v.(*Conn)
-					err := srv.ReadHandler(c)
+				if c.desc == desc {
+					err := srv.ReadHandler(c.conn)
 					if err != nil {
 						log.Errorf("read process handle error: %v", err)
 						if err == io.EOF {
@@ -134,11 +145,11 @@ func (srv *Server) handleConn(conn net.Conn) (err error) {
 						}
 					}
 				}
-			}()
-		}
 
-		if err := poller.Resume(desc); err != nil {
-			log.Panicf("poller.Resume() error: %v", err)
+				if err := poller.Resume(desc); err != nil {
+					log.Panicf("poller.Resume() error: %v", err)
+				}
+			}()
 		}
 	})
 

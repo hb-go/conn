@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mailru/easygo/netpoll"
+	"github.com/neverhook/easygo/netpoll"
 
 	"github.com/hb-go/conn/pkg/gopool"
 	"github.com/hb-go/conn/pkg/log"
@@ -26,14 +26,14 @@ type (
 	Option func(*Options)
 
 	ConnHandler      func(conn *Conn) error
-	ConnReadHandler  func(conn *Conn) error
+	ConnReadHandler  func(conn net.Conn) error
 	ConnWriteHandler func(conn net.Conn, p []byte) (int, error)
 )
 
 func init() {
 
-	readPool = gopool.NewPool(512, 256, 128)
-	writePool = gopool.NewPool(512, 256, 128)
+	readPool = gopool.NewPool(512, 256, 10)
+	writePool = gopool.NewPool(512, 256, 10)
 
 	var err error
 	poller, err = netpoll.New(&netpoll.Config{
@@ -52,8 +52,6 @@ type Server struct {
 
 	mu       sync.RWMutex
 	doneChan chan struct{}
-
-	conns sync.Map
 
 	ConnHandler  ConnHandler
 	ReadHandler  ConnReadHandler

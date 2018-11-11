@@ -11,15 +11,19 @@ import (
 )
 
 func ClientReader(c net.Conn) (err error) {
-	log.Infof("conn read begin")
+	log.Debug("conn read begin")
 	begin := time.Now()
+	c.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
 	bts, err := getMessageBuffer(c)
+	c.SetReadDeadline(time.Time{})
 	if err != nil {
 		// TODO temporary错误重试
+		log.Errorf("read error:%v", err)
 		return
 	}
 
 	d := time.Since(begin)
+	log.Debugf("received msg:%v", bts)
 	log.Debugf("conn read end: %v", d.String())
 
 	return

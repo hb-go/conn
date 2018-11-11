@@ -2,11 +2,13 @@ package conn
 
 import (
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/hb-go/conn/pkg/log"
+	"github.com/neverhook/easygo/netpoll"
 )
 
 var (
@@ -16,7 +18,10 @@ var (
 
 type Conn struct {
 	id   int64
-	Conn net.Conn
+	conn net.Conn
+	file *os.File //copy of origin connection fd
+
+	desc *netpoll.Desc
 
 	reading int32
 	closed  int32
@@ -39,7 +44,7 @@ func init() {
 
 func getConnection(conn net.Conn) *Conn {
 	c := connPool.Get().(*Conn)
-	c.Conn = conn
+	c.conn = conn
 	c.closed = 0
 	return c
 }
@@ -55,7 +60,9 @@ func (c *Conn) put() {
 }
 
 func (c *Conn) reset() {
-	c.Conn = nil
+	c.conn = nil
+	c.file = nil
+	c.desc = nil
 	c.closed = 0
 	c.reading = 0
 }
@@ -69,9 +76,16 @@ func (c *Conn) close() {
 		return
 	}
 
-	if c.Conn != nil {
-		if err := c.Conn.Close(); err != nil {
+	if c.conn != nil {
+		if err := c.conn.Close(); err != nil {
 			log.Errorf("conn close error:%v", err)
+		}
+	}
+
+	// close copied fd
+	if c.file != nil {
+		if err := c.file.Close(); err != nil {
+			log.Errorf("conn file close error:%v", err)
 		}
 	}
 
@@ -83,9 +97,7 @@ func (c *Conn) isClosed() bool {
 }
 
 func (c *Conn) setReading() bool {
-	doit := atomic.CompareAndSwapInt32(&c.reading, 0, 1)
-
-	return doit
+	return atomic.CompareAndSwapInt32(&c.reading, 0, 1)
 }
 
 func (c *Conn) setReaded() bool {

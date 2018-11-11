@@ -11,3 +11,6 @@ import:
   subpackages:
   - log
 - package: github.com/surgemq/message
+- package: github.com/neverhook/easygo
+  subpackages:
+  - netpoll
